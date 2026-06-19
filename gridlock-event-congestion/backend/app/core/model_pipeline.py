@@ -1,6 +1,6 @@
 import json
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -187,6 +187,12 @@ class SegmentImpactModel:
         venue_capacity = int(row.get("venue_capacity", 20000)) if row.get("venue_capacity") not in [None, "", "nan"] else self._estimate_capacity(event_type)
 
         start_ts = self._parse_datetime(row.get("start_datetime"))
+        if start_ts is None:
+            start_ts = self._build_datetime_from_time_and_day(
+                time_str=row.get("time_of_day"),
+                day_of_week=row.get("day_of_week"),
+            )
+
         end_ts = self._parse_datetime(row.get("end_datetime"))
         duration_min = int((end_ts - start_ts).total_seconds() / 60) if end_ts and start_ts else 60
 
@@ -311,6 +317,31 @@ class SegmentImpactModel:
             except Exception:
                 continue
         return None
+
+    @staticmethod
+    def _build_datetime_from_time_and_day(time_str: Optional[str], day_of_week: Optional[str]) -> datetime:
+        if not time_str:
+            time_str = "00:00"
+        if "." in time_str:
+            time_str = time_str.split(".")[0]
+        try:
+            hour, minute = map(int, time_str.split(":")[:2])
+        except Exception:
+            hour, minute = 0, 0
+
+        if not day_of_week:
+            reference = datetime.utcnow()
+        else:
+            reference = datetime.utcnow()
+            target = day_of_week.strip().lower()
+            weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+            if target in weekdays:
+                today_index = reference.weekday()
+                target_index = weekdays.index(target)
+                delta_days = (target_index - today_index) % 7
+                reference = reference + timedelta(days=delta_days)
+
+        return datetime(reference.year, reference.month, reference.day, hour, minute)
 
     def _road_criticality_score(self, priority: str) -> float:
         mapping = {"high": 5.0, "medium": 3.0, "low": 1.5}

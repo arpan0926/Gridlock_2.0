@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from backend.app.core.model_pipeline import SegmentImpactModel
 from backend.app.core.recommendation import RecommendationEngine
 from backend.app.services.osm_service import OSMGraphService
+from dataclasses import asdict
 
 router = APIRouter()
 
@@ -112,9 +113,14 @@ def forecast_event(input_data: ForecastInput):
         max_paths=3,
     )
 
+    # convert dataclass instances to plain dicts for pydantic validation
+    manpower_dict = asdict(manpower) if manpower is not None else None
+    barricade_list = [asdict(b) for b in barricade_candidates]
+    diversion_list = [asdict(r) for r in diversion_routes]
+
     return ForecastResponse(
         segments=segments,
-        manpower=manpower,
-        barricade_candidates=barricade_candidates,
-        diversion_routes=diversion_routes,
+        manpower=manpower_dict,
+        barricade_candidates=barricade_list,
+        diversion_routes=diversion_list,
     )
