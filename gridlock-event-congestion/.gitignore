@@ -4,7 +4,6 @@ env/
 .env
 
 # Data & Models
-data/
 backend/models/*.pkl
 backend/models/*.bin
 backend/models/*.h5
