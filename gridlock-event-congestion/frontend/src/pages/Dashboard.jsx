@@ -115,6 +115,25 @@ export default function Dashboard() {
       {/* Loading state */}
       {loading && <LoadingSpinner text="Running impact forecast model..." />}
 
+      {/* Unplanned Event Notice */}
+      {forecastData && forecastData.segments?.length > 0 && (
+        <motion.div
+          className="card"
+          style={{
+            borderLeft: '4px solid #f59e0b',
+            backgroundColor: 'rgba(245, 158, 11, 0.05)',
+          }}
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          {forecastData.manpower?.rationale?.includes('unplanned') && (
+            <div style={{ padding: '12px', color: 'var(--text-secondary)', fontSize: '14px' }}>
+              ⚠️ <strong>Unplanned Event:</strong> This forecast is for an unexpected/spontaneous event. Predictions may be less accurate; prioritize real-time monitoring and rapid response coordination.
+            </div>
+          )}
+        </motion.div>
+      )}
+
       {/* Results */}
       <ResultsPanel data={forecastData} />
     </div>

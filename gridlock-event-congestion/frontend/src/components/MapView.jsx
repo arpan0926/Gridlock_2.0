@@ -55,21 +55,20 @@ export default function MapView({ forecastData, eventCoords, onMapClick }) {
 
   const segments = forecastData?.segments || [];
   const barricades = forecastData?.barricade_candidates || [];
+  const diversionRoutes = forecastData?.diversion_routes || [];
 
   // Simulate segment positions in a radial layout around the event venue
   const venueLat = eventCoords?.lat || DEFAULT_LAT;
   const venueLng = eventCoords?.lng || DEFAULT_LNG;
 
-  const segmentPositions = segments.map((seg, i) => {
-    const angle = (i / Math.max(segments.length, 1)) * 2 * Math.PI;
-    const dist = (seg.distance_m || 300) / 111000; // rough degree offset
-    return {
-      ...seg,
-      lat: venueLat + dist * Math.cos(angle),
-      lng: venueLng + dist * Math.sin(angle),
-    };
-  });
+  // Use real segment coordinates from backend
+  const segmentPositions = segments.map((seg) => ({
+    ...seg,
+    lat: seg.start_lat || venueLat,
+    lng: seg.start_lon || venueLng,
+  }));
 
+  // Barricades still use simulated positions (no coordinates in response)
   const barricadePositions = barricades.map((b, i) => {
     const angle = ((i + 0.5) / Math.max(barricades.length, 1)) * 2 * Math.PI;
     const dist = (b.distance_m || 200) / 111000;
@@ -80,11 +79,16 @@ export default function MapView({ forecastData, eventCoords, onMapClick }) {
     };
   });
 
-  // Diversion routes — simulate curved paths
-  const diversionRoutes = (forecastData?.diversion_routes || []).map((route, ri) => {
+  // Use real route coordinates from backend
+  const diversionRoutesWithPoints = diversionRoutes.map((route) => {
+    if (route.path_lats && route.path_lons && route.path_lats.length > 0) {
+      const points = route.path_lats.map((lat, i) => [lat, route.path_lons[i]]);
+      return { ...route, points };
+    }
+    // Fallback to simulation if no coordinates
     const points = [];
     const numPts = route.path_nodes?.length || 5;
-    const baseAngle = ((ri + 0.25) / 3) * Math.PI;
+    const baseAngle = (diversionRoutes.indexOf(route) / Math.max(diversionRoutes.length, 1)) * Math.PI;
     for (let j = 0; j < numPts; j++) {
       const frac = j / (numPts - 1);
       const lat = venueLat + frac * 0.012 * Math.cos(baseAngle + frac * 0.5);
@@ -128,13 +132,13 @@ export default function MapView({ forecastData, eventCoords, onMapClick }) {
           </Popup>
         </CircleMarker>
 
-        {/* Segments as colored lines radiating from venue */}
+        {/* Segments as colored lines showing real road segments */}
         {segmentPositions.map((seg) => (
           <Polyline
             key={seg.segment_id}
             positions={[
-              [venueLat, venueLng],
-              [seg.lat, seg.lng],
+              [seg.start_lat, seg.start_lon],
+              [seg.end_lat, seg.end_lon],
             ]}
             pathOptions={{
               color: degradationColor(seg.predicted_speed_degradation),
@@ -148,6 +152,8 @@ export default function MapView({ forecastData, eventCoords, onMapClick }) {
               Type: {seg.highway_type}
               <br />
               Degradation: {(seg.predicted_speed_degradation * 100).toFixed(0)}% ({degradationLabel(seg.predicted_speed_degradation)})
+              <br />
+              Duration: {seg.duration_min}min
               <br />
               Distance: {seg.distance_m?.toFixed(0)}m
             </Popup>
@@ -178,7 +184,7 @@ export default function MapView({ forecastData, eventCoords, onMapClick }) {
         ))}
 
         {/* Diversion Routes */}
-        {diversionRoutes.map((route) => (
+        {diversionRoutesWithPoints.map((route) => (
           <Polyline
             key={route.route_id}
             positions={route.points}

@@ -43,6 +43,10 @@ class SegmentPrediction(BaseModel):
     affected_radius_m: float
     duration_min: int
     distance_m: float
+    start_lat: float
+    start_lon: float
+    end_lat: float
+    end_lon: float
 
 
 class ManpowerRecommendation(BaseModel):
@@ -65,6 +69,8 @@ class DiversionRoute(BaseModel):
     detour_ratio: float
     capacity_score: int
     path_nodes: List[int]
+    path_lats: List[float]
+    path_lons: List[float]
 
 
 class ForecastResponse(BaseModel):
