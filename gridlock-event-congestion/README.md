@@ -8,6 +8,17 @@
 
 This system addresses three critical gaps in event traffic management:
 
+## Current Status
+- ✅ OSM graph downloaded and available at `data/processed/bengaluru_drive.graphml`
+- ✅ Model trained and serialized to `backend/models/impact_model.pkl`
+- ✅ Frontend dependencies installed and `frontend/package.json` initialized
+- ✅ `frontend/.env` configured to connect to local backend API
+- ✅ Forecast API integrated with real segment coordinates and route polyline output
+- ✅ MapView renders real segment lines and route polylines instead of simulated paths
+- ✅ Backend training now reports R², RMSE, and MAE
+- ✅ Dashboard displays an unplanned event notice when appropriate
+- ⏳ End-to-end demo dry run remains to be completed
+
 ### **The 3 Pillars**
 
 #### **Pillar 1: Impact Forecasting (The Brain)**
@@ -90,12 +101,13 @@ python backend/train_model.py
 - Extracts features for each event→segment pair
 - Trains LightGBM (tuned hyperparameters from Round 1)
 - Saves model to `backend/models/impact_model.pkl`
+- Prints training metrics including R², RMSE, and MAE
 - **Time:** ~5–10 min on modern CPU
 
 ### **4. Start the API Server**
 ```bash
 cd gridlock-event-congestion
-uvicorn backend.app.main:app --reload --port 8000
+python -m uvicorn backend.app.main:app --reload --port 8000
 ```
 - Runs on `http://127.0.0.1:8000`
 - Interactive docs: `http://127.0.0.1:8000/docs`
@@ -322,12 +334,12 @@ Accuracy Metrics per Event Type
 - ✅ OSM graph integration
 
 ### **Frontend (React — Your Teammate)**
-- [ ] Dashboard layout
-- [ ] Event input form
-- [ ] Forecast result visualization (map + tables)
-- [ ] Manpower/barricade/routes display
-- [ ] Feedback submission UI
-- [ ] Metrics tracking view
+- ✅ Dashboard layout
+- ✅ Event input form
+- ✅ Forecast result visualization (map + tables)
+- ✅ Manpower/barricade/routes display
+- ✅ Unplanned event notice
+- ⚠️ Feedback submission UI and metrics dashboard should be validated in the end-to-end demo
 
 **Frontend → Backend Integration:**
 - `POST /api/forecast` with event details

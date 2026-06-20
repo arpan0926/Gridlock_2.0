@@ -139,6 +139,17 @@ class RecommendationEngine:
             distance = self._route_length(graph, path)
             detour = distance / max(1.0, self._direct_line_distance(origin, destination))
             capacity = self._route_capacity(graph, path)
+            
+            # Extract lat/lon for each node in path
+            path_lats = []
+            path_lons = []
+            for node in path:
+                node_data = graph.nodes.get(node, {})
+                lat = float(node_data.get("y", node_data.get("lat", 0.0)))
+                lon = float(node_data.get("x", node_data.get("lon", 0.0)))
+                path_lats.append(round(lat, 6))
+                path_lons.append(round(lon, 6))
+            
             routes.append(
                 DiversionRoute(
                     route_id=f"route-{idx + 1}",
@@ -146,6 +157,8 @@ class RecommendationEngine:
                     detour_ratio=round(detour, 2),
                     capacity_score=capacity,
                     path_nodes=list(path),
+                    path_lats=path_lats,
+                    path_lons=path_lons,
                 )
             )
 

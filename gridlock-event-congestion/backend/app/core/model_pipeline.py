@@ -1,6 +1,6 @@
 import json
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -163,6 +163,15 @@ class SegmentImpactModel:
             features = {**dummy_row, **self._edge_features(edge_data)}
             X = pd.DataFrame([features])
             predicted = float(self.pipeline.predict(X)[0])
+            
+            # Extract start and end node coordinates
+            u_attrs = subgraph.nodes.get(u, {})
+            v_attrs = subgraph.nodes.get(v, {})
+            start_lat = float(u_attrs.get("y", u_attrs.get("lat", input_data.latitude)))
+            start_lon = float(u_attrs.get("x", u_attrs.get("lon", input_data.longitude)))
+            end_lat = float(v_attrs.get("y", v_attrs.get("lat", input_data.latitude)))
+            end_lon = float(v_attrs.get("x", v_attrs.get("lon", input_data.longitude)))
+            
             candidates.append(
                 {
                     "segment_id": f"{u}-{v}-{key}",
@@ -172,6 +181,10 @@ class SegmentImpactModel:
                     "affected_radius_m": round(radius_m * min(1.0, predicted + 0.25), 1),
                     "duration_min": max(10, int(predicted * 80 + 20)),
                     "distance_m": float(edge_data.get("length", 0.0)),
+                    "start_lat": round(start_lat, 6),
+                    "start_lon": round(start_lon, 6),
+                    "end_lat": round(end_lat, 6),
+                    "end_lon": round(end_lon, 6),
                 }
             )
 
@@ -187,6 +200,12 @@ class SegmentImpactModel:
         venue_capacity = int(row.get("venue_capacity", 20000)) if row.get("venue_capacity") not in [None, "", "nan"] else self._estimate_capacity(event_type)
 
         start_ts = self._parse_datetime(row.get("start_datetime"))
+        if start_ts is None:
+            start_ts = self._build_datetime_from_time_and_day(
+                time_str=row.get("time_of_day"),
+                day_of_week=row.get("day_of_week"),
+            )
+
         end_ts = self._parse_datetime(row.get("end_datetime"))
         duration_min = int((end_ts - start_ts).total_seconds() / 60) if end_ts and start_ts else 60
 
@@ -311,6 +330,35 @@ class SegmentImpactModel:
             except Exception:
                 continue
         return None
+
+    @staticmethod
+    def _build_datetime_from_time_and_day(time_str: Optional[str], day_of_week: Optional[str]) -> datetime:
+        # Handle both string and time object
+        if hasattr(time_str, 'isoformat'):  # time object
+            time_str = time_str.isoformat()
+        
+        if not time_str:
+            time_str = "00:00"
+        if "." in time_str:
+            time_str = time_str.split(".")[0]
+        try:
+            hour, minute = map(int, time_str.split(":")[:2])
+        except Exception:
+            hour, minute = 0, 0
+
+        if not day_of_week:
+            reference = datetime.utcnow()
+        else:
+            reference = datetime.utcnow()
+            target = day_of_week.strip().lower()
+            weekdays = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+            if target in weekdays:
+                today_index = reference.weekday()
+                target_index = weekdays.index(target)
+                delta_days = (target_index - today_index) % 7
+                reference = reference + timedelta(days=delta_days)
+
+        return datetime(reference.year, reference.month, reference.day, hour, minute)
 
     def _road_criticality_score(self, priority: str) -> float:
         mapping = {"high": 5.0, "medium": 3.0, "low": 1.5}

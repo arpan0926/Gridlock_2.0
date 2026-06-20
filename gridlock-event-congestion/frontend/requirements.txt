@@ -1,5 +1,30 @@
-streamlit
-folium
-streamlit-folium
-requests
-pandas
+# Gridlock Frontend — Node.js Dependencies
+# This file documents the npm packages required for the React dashboard.
+# Install with: npm install
+#
+# Runtime Dependencies:
+# react                  ^19.x       — UI framework
+# react-dom              ^19.x       — React DOM renderer
+# react-leaflet          ^5.x        — React bindings for Leaflet maps
+# leaflet                ^1.9.x      — Interactive map library
+# recharts               ^2.x        — Charting library (bar, area, radial)
+# framer-motion          ^12.x       — Animation library
+# lucide-react           ^0.5x       — Modern icon set
+# react-hot-toast        ^2.x        — Toast notifications
+# axios                  ^1.x        — HTTP client
+#
+# Dev Dependencies:
+# vite                   ^6.x        — Build tool & dev server
+# @vitejs/plugin-react   ^4.x        — React plugin for Vite
+# @types/react           ^19.x       — React type definitions
+# @types/react-dom       ^19.x       — React DOM type definitions
+# eslint                 ^9.x        — Code linter
+#
+# System Requirements:
+# Node.js >= 18.x
+# npm >= 9.x
+#
+# Quick Start:
+#   cd frontend
+#   npm install
+#   npm run dev
