@@ -136,7 +136,7 @@ def forecast_event(input_data: ForecastInput):
     # ── Persist to SQLite ──────────────────────────────────
     try:
         response_dict = response.model_dump() if hasattr(response, "model_dump") else response.dict()
-        db.save_forecast(input_data.model_dump() if hasattr(input_data, "model_dump") else input_data.dict(), response_dict)
+        db.save_forecast(input_data.model_dump(mode="json") if hasattr(input_data, "model_dump") else input_data.dict(), response_dict)
     except Exception as e:
         print(f"[DB] Warning: failed to save forecast — {e}")
 
