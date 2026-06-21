@@ -95,6 +95,7 @@ def forecast_event(input_data: ForecastInput):
             graph=graph,
             radius_m=1200,
             limit=12,
+            osm_service=osm_service,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Forecast model failure: {exc}")

@@ -1,44 +1,75 @@
-# Gridlock Event Congestion Prototype
+# Gridlock 2.0 — Event Traffic Impact Forecasting System
 
-**Flipkart Gridlock Hackathon Round 2** — A segment-level traffic impact forecasting and operational recommendation system for planned events in Bengaluru.
+> **Flipkart Gridlock Hackathon — Round 2**
+> A segment-level traffic impact forecasting and operational recommendation platform for planned events in Bengaluru.
 
 ---
 
-## Project Overview
+## What is Gridlock 2.0?
 
-This system addresses three critical gaps in event traffic management:
+Gridlock 2.0 helps traffic police and event management teams **predict exactly which road segments will slow down** when a planned event happens — and tells them precisely what to do about it.
 
-## Current Status
-- ✅ OSM graph downloaded and available at `data/processed/bengaluru_drive.graphml`
-- ✅ Model trained and serialized to `backend/models/impact_model.pkl`
-- ✅ Frontend dependencies installed and `frontend/package.json` initialized
-- ✅ `frontend/.env` configured to connect to local backend API
-- ✅ Forecast API integrated with real segment coordinates and route polyline output
-- ✅ MapView renders real segment lines and route polylines instead of simulated paths
-- ✅ Backend training now reports R², RMSE, and MAE
-- ✅ Dashboard displays an unplanned event notice when appropriate
-- ⏳ End-to-end demo dry run remains to be completed
+Most traffic tools answer "will there be congestion near this event?" Gridlock 2.0 answers a harder question: **"Which specific roads will slow down by how much, for how long, and where should officers and barricades go?"**
 
-### **The 3 Pillars**
+The system ingests an event's details (type, footfall, location, time) and returns:
 
-#### **Pillar 1: Impact Forecasting (The Brain)**
-- **What we do:** Predict % speed degradation **per road segment**, not just "area around event"
-- **Features:** Event type, footfall, venue capacity, day/time, road network topology, historical baselines
-- **Output:** Speed degradation per segment + affected radius + duration estimate
-- **Tech:** LightGBM trained on segment-event pairs from historical Astram data
-- **Edge:** Reuses proven Round 1 LightGBM pipeline adapted for segment-level granularity
+- A ranked list of affected road segments with predicted speed degradation percentages
+- Exact officer deployment count and whether signal override is warranted
+- High-priority barricade placement candidates near the venue
+- Computed alternate diversion routes using the real Bengaluru road network
+- A post-event feedback loop that tracks model accuracy over time
 
-#### **Pillar 2: Operational Recommendations (The Differentiator)**
-- **Manpower Allocation:** Rule-based lookup (footfall × road criticality → officer count)
-- **Barricading Plan:** Identifies high-priority segments in event perimeter for barricade placement
-- **Diversion Routes:** Pre-computed alternate routes ranked by capacity & detour length using OSMnx/NetworkX
-- **Output:** Actionable deployment guidelines backed by network analysis
+---
 
-#### **Pillar 3: Post-Event Learning Loop (The Unique Angle)**
-- **Feedback Collection:** Log actual vs predicted congestion after each event
-- **Accuracy Tracking:** Per-event-type model performance dashboard
-- **Concept:** System gets smarter after every event — judges love seeing this
-- **Storage:** Simple JSON feedback log with metrics aggregation
+## The Three Pillars
+
+### Pillar 1 — Impact Forecasting (The Brain)
+
+A LightGBM regression model trained on 2,003,015 event-segment pairs derived from 8,173 real historical events (Astram dataset) and the complete Bengaluru OSM road network (155,370 nodes, 393,715 edges).
+
+**What it predicts:** Speed degradation (0.0–0.85 scale) per road segment within a configurable radius of the event venue.
+
+**Features used:**
+| Category | Features |
+|---|---|
+| Temporal | Hour, minute, day-of-week, cyclical sin/cos encoding, slot-of-day, rush-hour flag |
+| Geospatial | Node lat/lon, lat×hour interaction, lat×lon combined |
+| Event | Type, footfall, venue capacity, duration, corridor, priority, cause |
+| Road | Edge length, max speed, lane count, highway classification |
+
+**Training metrics:**
+| Metric | Score |
+|---|---|
+| R² Score | **0.9852** |
+| RMSE | 0.0115 |
+| MAE | 0.0099 |
+
+### Pillar 2 — Operational Recommendations (The Differentiator)
+
+Rule-based and graph-based engine that translates the forecast into actionable deployment guidance:
+
+- **Manpower allocation** — officer count derived from footfall × road criticality scoring; signal override flag for high-criticality scenarios
+- **Barricade candidates** — top N road segments near the venue ranked by highway type and proximity, with exact segment coordinates
+- **Diversion routes** — Dijkstra shortest-path routing on the real OSM directed graph, returning full waypoint coordinates for map rendering
+
+### Pillar 3 — Post-Event Learning Loop (The Unique Angle)
+
+After each event, operators submit actual vs. predicted congestion via the feedback API. The system aggregates accuracy per event type, enabling ongoing model evaluation and future retraining.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| ML Model | LightGBM 4.x + scikit-learn Pipeline |
+| Road Network | OSMnx 2.x + NetworkX 3.x (Bengaluru OSM graph) |
+| Backend | FastAPI 0.129 + Uvicorn |
+| Frontend | React 19 + Vite 6 |
+| Maps | React-Leaflet + Leaflet 1.9 |
+| Charts | Recharts 2 |
+| Animation | Framer Motion 12 |
+| HTTP Client | Axios |
 
 ---
 
@@ -46,97 +77,174 @@ This system addresses three critical gaps in event traffic management:
 
 ```
 gridlock-event-congestion/
-├── README.md                      # This file
-├── .gitignore                     # Ignore data, models, caches
+├── README.md
 ├── backend/
-│   ├── train_model.py            # Entry point for model training
-│   ├── requirements.txt           # Backend dependencies
-│   ├── models/                   # Saved ML models (.pkl)
+│   ├── train_model.py          # One-time model training entry point
+│   ├── requirements.txt        # Python dependencies
+│   ├── models/
+│   │   └── impact_model.pkl    # Trained LightGBM pipeline (generated)
 │   └── app/
-│       ├── main.py               # FastAPI app & routing
+│       ├── main.py             # FastAPI app + lifespan (pre-loads OSM graph)
 │       ├── api/
-│       │   ├── forecast.py       # POST /api/forecast endpoint
-│       │   └── feedback.py       # POST /api/feedback, GET /api/metrics
+│       │   ├── forecast.py     # POST /api/forecast
+│       │   └── feedback.py     # POST /api/feedback  GET /api/metrics
 │       ├── core/
-│       │   ├── model_pipeline.py # SegmentImpactModel (training & inference)
-│       │   ├── recommendation.py # ManpowerRecommendation, Barricade, Routes
-│       │   └── feedback.py       # FeedbackTracker (persistence)
+│       │   ├── model_pipeline.py   # SegmentImpactModel — training & inference
+│       │   ├── recommendation.py   # Manpower, barricade & routing engine
+│       │   └── feedback.py         # FeedbackTracker — JSON persistence
 │       └── services/
-│           └── osm_service.py    # OSMnx graph loading & utilities
-├── notebooks/                     # Jupyter notebooks (EDA, routing, training)
-├── scripts/
-│   └── download_osm_data.py      # Fetch Bengaluru OSM graph
+│           └── osm_service.py  # OSMnx graph loader + vectorised spatial index
 ├── data/
-│   ├── raw/                      # Input: event CSV
-│   └── processed/                # Output: bengaluru_drive.graphml
-└── frontend/                      # React dashboard (built by teammate)
+│   ├── raw/                    # Place Astram event CSV here
+│   └── processed/
+│       └── bengaluru_drive.graphml   # Downloaded OSM graph (generated)
+├── scripts/
+│   └── download_osm_data.py    # Fetches Bengaluru road network from OSM
+└── frontend/
+    ├── package.json
+    ├── vite.config.js
+    ├── .env                    # VITE_API_BASE_URL (points to backend)
+    └── src/
+        ├── pages/
+        │   ├── Dashboard.jsx   # Event form + live map + results
+        │   ├── Analytics.jsx   # Model accuracy charts per event type
+        │   └── Feedback.jsx    # Post-event outcome submission
+        ├── components/
+        │   ├── EventForm.jsx   # Input form with map-click coordinates
+        │   ├── MapView.jsx     # Leaflet map — segments, barricades, routes
+        │   ├── ResultsPanel.jsx
+        │   ├── Sidebar.jsx
+        │   └── StatCard.jsx
+        ├── context/
+        │   └── ThemeContext.jsx  # Dark / light theme
+        └── services/
+            └── api.js          # Axios client + mock data fallback
 ```
 
 ---
 
-## Quick Start
+## Setup & Running Locally
 
-### **Prerequisites**
-- Python 3.9+
-- pip / virtualenv
-- ~2GB disk space for OSM graph + models
+### Prerequisites
 
-### **1. Install Dependencies**
+| Requirement | Version |
+|---|---|
+| Python | 3.9 or higher |
+| Node.js | 18 or higher |
+| npm | 9 or higher |
+| Disk space | ~500 MB (OSM graph + model) |
+
+---
+
+### Step 1 — Clone the repository
+
 ```bash
+git clone <repo-url>
 cd gridlock-event-congestion
-python -m pip install -r backend/requirements.txt
 ```
 
-### **2. Download OSM Road Network**
+---
+
+### Step 2 — Install Python dependencies
+
+```bash
+pip install -r backend/requirements.txt
+```
+
+---
+
+### Step 3 — Download the Bengaluru road network
+
+> **One-time setup. Takes 5–15 minutes depending on internet speed.**
+
 ```bash
 python scripts/download_osm_data.py
 ```
-Creates `data/processed/bengaluru_drive.graphml` (~500MB, one-time download).
 
-### **3. Train the Model**
-```bash
-python backend/train_model.py
+This fetches the complete Bengaluru drive network from OpenStreetMap and saves it to `data/processed/bengaluru_drive.graphml` (~140 MB).
+
+---
+
+### Step 4 — Place the event dataset
+
+Copy the Astram event CSV into the raw data folder:
+
 ```
-- Loads raw event data from `data/raw/Astram event data_anonymized*.csv`
-- Extracts features for each event→segment pair
-- Trains LightGBM (tuned hyperparameters from Round 1)
-- Saves model to `backend/models/impact_model.pkl`
-- Prints training metrics including R², RMSE, and MAE
-- **Time:** ~5–10 min on modern CPU
-
-### **4. Start the API Server**
-```bash
-cd gridlock-event-congestion
-python -m uvicorn backend.app.main:app --reload --port 8000
-```
-- Runs on `http://127.0.0.1:8000`
-- Interactive docs: `http://127.0.0.1:8000/docs`
-
-### **5. Test an Endpoint**
-```bash
-curl -X POST http://127.0.0.1:8000/api/forecast \
-  -H "Content-Type: application/json" \
-  -d '{
-    "event_type": "Concert",
-    "expected_footfall": 25000,
-    "venue_capacity": 40000,
-    "day_of_week": "Saturday",
-    "time_of_day": "18:30:00",
-    "latitude": 12.9716,
-    "longitude": 77.5946,
-    "corridor": "MG Road",
-    "priority": "High"
-  }'
+data/raw/Astram event data_anonymized - Astram event data_anonymizedb40ac87.csv
 ```
 
 ---
 
-## API Endpoints
+### Step 5 — Train the ML model
 
-### **POST `/api/forecast`**
-Forecast segment-level impact and operational recommendations for an event.
+> **One-time setup. Takes 5–10 minutes.**
 
-**Request Body:**
+```bash
+python backend/train_model.py
+```
+
+Expected output:
+```
+Starting training pipeline...
+Building training data...
+Training samples: 2003015
+Training model...
+==================================================
+Training Metrics:
+  R² Score:  0.9852
+  RMSE:      0.011482
+  MAE:       0.009936
+==================================================
+Training complete. Model saved to backend/models/impact_model.pkl
+```
+
+---
+
+### Step 6 — Start the backend API server
+
+```bash
+python -m uvicorn backend.app.main:app --port 9000
+```
+
+> **Important:** The server pre-loads the OSM graph on startup. Wait for the following message before making requests (approximately 60–90 seconds):
+> ```
+> [Startup] OSM graph ready — 155370 nodes, 393715 edges
+> INFO:     Application startup complete.
+> ```
+
+Backend is now available at:
+- API: `http://127.0.0.1:9000`
+- Interactive docs (Swagger): `http://127.0.0.1:9000/docs`
+
+---
+
+### Step 7 — Start the frontend
+
+In a **new terminal**:
+
+```bash
+cd frontend
+npm install       # only needed once
+npm run dev
+```
+
+Frontend is available at: **http://localhost:5173**
+
+---
+
+### After first-time setup
+
+On subsequent runs you only need Steps 6 and 7 — the graph and model are already on disk.
+
+---
+
+## API Reference
+
+### `POST /api/forecast`
+
+Runs the full forecasting pipeline for a planned event.
+
+**Request body:**
 ```json
 {
   "event_type": "Concert",
@@ -146,94 +254,90 @@ Forecast segment-level impact and operational recommendations for an event.
   "time_of_day": "18:30:00",
   "latitude": 12.9716,
   "longitude": 77.5946,
-  "end_latitude": 12.9750,
-  "end_longitude": 77.5950,
+  "end_latitude": 12.9850,
+  "end_longitude": 77.6100,
   "corridor": "MG Road",
-  "priority": "High",
-  "event_cause": "Concert"
+  "priority": "High"
 }
 ```
+
+> `end_latitude` / `end_longitude` are optional. When provided, diversion routes are computed between origin and destination.
 
 **Response:**
 ```json
 {
   "segments": [
     {
-      "segment_id": "1234-5678-0",
-      "road_name": "MG Road",
+      "segment_id": "663311696-10044013422-0",
+      "road_name": "Nrupatunga Road",
       "highway_type": "primary",
-      "predicted_speed_degradation": 0.35,
-      "affected_radius_m": 1500.0,
-      "duration_min": 45,
-      "distance_m": 250.5
+      "predicted_speed_degradation": 0.483,
+      "affected_radius_m": 879.3,
+      "duration_min": 58,
+      "distance_m": 795.6,
+      "start_lat": 12.97511,
+      "start_lon": 77.586907,
+      "end_lat": 12.968066,
+      "end_lon": 77.587361
     }
   ],
   "manpower": {
     "officer_count": 4,
     "signal_override": true,
-    "rationale": "Footfall 25000 mapped to 4 officers; criticality score 4 triggers signal override."
+    "rationale": "Footfall 25000 mapped to 4 officers; criticality score 5 triggers signal override."
   },
   "barricade_candidates": [
     {
-      "segment_id": "1234-5679-0",
-      "road_name": "Brigade Road",
-      "highway_type": "secondary",
-      "priority_score": 3,
-      "distance_m": 180.0
+      "segment_id": "245615180-12759084951-0",
+      "road_name": "Kasturba Road",
+      "highway_type": "primary",
+      "priority_score": 5,
+      "distance_m": 14.0
     }
   ],
   "diversion_routes": [
     {
       "route_id": "route-1",
-      "total_distance_m": 5200.0,
-      "detour_ratio": 1.15,
-      "capacity_score": 8,
-      "path_nodes": [100, 101, 102, 103]
+      "total_distance_m": 3055.4,
+      "detour_ratio": 1.37,
+      "capacity_score": 3,
+      "path_nodes": [123, 456, 789],
+      "path_lats": [12.9716, 12.9740, 12.9850],
+      "path_lons": [77.5946, 77.6020, 77.6100]
     }
   ]
 }
 ```
 
-### **POST `/api/feedback`**
-Log actual vs predicted congestion after an event.
+---
 
-**Request Body:**
+### `POST /api/feedback`
+
+Records actual post-event congestion for model accuracy tracking.
+
 ```json
 {
-  "event_id": "EVT-001",
   "event_type": "Concert",
-  "predicted_speed_degradation": 0.35,
-  "actual_speed_degradation": 0.32,
-  "notes": "Actual impact was lower due to early police deployment."
+  "predicted_speed_degradation": 0.483,
+  "actual_speed_degradation": 0.45,
+  "notes": "Early officer deployment reduced peak congestion"
 }
 ```
 
-**Response:**
-```json
-{
-  "status": "ok",
-  "message": "Feedback recorded."
-}
-```
+---
 
-### **GET `/api/metrics`**
-Retrieve aggregated model accuracy per event type.
+### `GET /api/metrics`
 
-**Response:**
+Returns aggregated model accuracy per event type.
+
 ```json
 {
   "metrics": [
     {
       "event_type": "Concert",
-      "records": 12,
-      "average_error": 0.0342,
-      "last_updated": "2025-06-18T10:30:00Z"
-    },
-    {
-      "event_type": "Cricket",
-      "records": 8,
-      "average_error": 0.0285,
-      "last_updated": "2025-06-18T09:15:00Z"
+      "records": 3,
+      "average_error": 0.0377,
+      "last_updated": "2026-06-21T05:30:00Z"
     }
   ]
 }
@@ -241,177 +345,88 @@ Retrieve aggregated model accuracy per event type.
 
 ---
 
-## Model Training Pipeline
+## How the Forecast Works
 
-### **Feature Engineering**
-The model uses temporal, geospatial, and event features:
-
-**Temporal Features:**
-- Hour, minute, day of week
-- Cyclical encoding: `sin/cos(hour/24)`, `sin/cos(day/7)`
-- Rush hour / late night / off-peak flags
-- Slot of day (hour × 4 + minute // 15)
-
-**Geospatial Features:**
-- Node latitude/longitude
-- Lat-hour interaction: `lat × sin(hour)`
-- Lat-lon combined: `lat × lon`
-
-**Event Features:**
-- Event type (concert, cricket, expo, political rally, unplanned)
-- Expected footfall, venue capacity
-- Event duration
-- Corridor, priority, event cause
-
-**Road Segment Features:**
-- Edge length (meters)
-- Max speed (kph)
-- Number of lanes
-- Highway type (motorway, trunk, primary, secondary, etc.)
-
-### **Training Details**
-- **Algorithm:** LightGBM Regressor
-- **Hyperparameters (from Round 1):**
-  - `num_leaves: 255`
-  - `max_depth: 12`
-  - `learning_rate: 0.02`
-  - `n_estimators: 2000`
-  - `subsample: 0.8`
-  - `colsample_bytree: 0.8`
-  - `reg_alpha: 0.05, reg_lambda: 1.0`
-- **Preprocessing:**
-  - OneHotEncoding for categorical features
-  - StandardScaler for numeric features
-- **Target:** Speed degradation (0.0–0.85) per segment
-- **Synthetic Target:** Generated from event/segment rules if labels unavailable
-
-### **Output**
-- Serialized Pipeline (sklearn + LightGBM): `backend/models/impact_model.pkl`
-- Can be loaded and used for batch predictions
-
----
-
-## Project Architecture
-
-### **Backend Stack**
-| Component | Tech |
-|-----------|------|
-| Web Framework | FastAPI 0.129 |
-| ASGI Server | Uvicorn 0.41 |
-| ML Model | LightGBM 4.6 |
-| Data Handling | Pandas 3.0, NumPy 2.4 |
-| Road Network | OSMnx 2.1, NetworkX 3.6 |
-| Validation | Pydantic 2.12 |
-
-### **Data Flow**
 ```
-Raw Event CSV
-    ↓
-Feature Engineering (temporal, geospatial, event, road)
-    ↓
-LightGBM Training (segment-level pairs)
-    ↓
-Serialized Model (.pkl)
-    ↓
-FastAPI /forecast Endpoint
-    ↓
-Predictions + Recommendations → Frontend / Client
-    ↓
-Feedback Log (actual vs predicted)
-    ↓
-Accuracy Metrics per Event Type
+Event input (type, footfall, location, time)
+        │
+        ▼
+Nearest OSM node lookup (vectorised spatial index)
+        │
+        ▼
+Subgraph extraction — all road segments within 1.2 km radius
+        │
+        ▼
+Feature engineering — temporal + geospatial + event + road features
+        │
+        ▼
+LightGBM batch prediction — speed degradation per segment
+        │
+        ▼
+Rank segments by degradation → top 12 returned
+        │
+        ├──▶ Manpower rule engine (footfall × criticality → officer count)
+        │
+        ├──▶ Barricade candidates (vectorised radius search → ranked by highway type)
+        │
+        └──▶ Diversion routes (Dijkstra on OSM directed graph, if destination given)
 ```
 
 ---
 
-## Team Responsibilities
+## Supported Event Types
 
-### **Backend (This Repo)**
-- ✅ Model training pipeline
-- ✅ Forecasting API (`/api/forecast`)
-- ✅ Feedback & metrics API (`/api/feedback`, `/api/metrics`)
-- ✅ Recommendation engine (manpower, barricades, routes)
-- ✅ OSM graph integration
-
-### **Frontend (React — Your Teammate)**
-- ✅ Dashboard layout
-- ✅ Event input form
-- ✅ Forecast result visualization (map + tables)
-- ✅ Manpower/barricade/routes display
-- ✅ Unplanned event notice
-- ⚠️ Feedback submission UI and metrics dashboard should be validated in the end-to-end demo
-
-**Frontend → Backend Integration:**
-- `POST /api/forecast` with event details
-- `GET /api/metrics` for accuracy tracking
-- `POST /api/feedback` to log outcomes
+| Event Type | Typical Footfall | Typical Degradation |
+|---|---|---|
+| Concert | 10,000 – 50,000 | 0.40 – 0.55 |
+| Cricket | 30,000 – 80,000 | 0.45 – 0.60 |
+| Political Rally | 20,000 – 70,000 | 0.42 – 0.58 |
+| Expo | 5,000 – 25,000 | 0.30 – 0.45 |
+| Unplanned | — | 0.20 – 0.45 |
 
 ---
 
-## Handling Unplanned Events
+## Known Limitations
 
-Per the problem statement, unplanned events (accidents, VIP movement, flash gatherings) cannot be predicted directly.
-
-**Our Approach:**
-1. **Anomaly Detection:** Flag unusual live traffic patterns
-2. **Rapid Response Playbook:** Pre-configured deployment templates
-3. **Common Scenarios:** Playbooks for accident, VIP, flash gathering
-4. **Fallback:** Escalate to manual control if confidence < threshold
+- **Startup latency:** The OSM graph (143 MB) takes ~60 seconds to load into memory on first start. Subsequent requests are fast.
+- **Synthetic training targets:** Ground-truth speed labels are unavailable in the raw event data. Targets are derived from rule-based heuristics (event type × road type × priority × footfall). Model accuracy on held-out real speed data is not yet measured.
+- **Single-city model:** Trained exclusively on Bengaluru road topology. Not directly applicable to other cities without retraining.
+- **Feedback loop is passive:** Post-event feedback is aggregated for visibility but does not trigger automatic model retraining.
+- **Diversion routes:** Currently returns one primary route (Dijkstra shortest path). Multiple truly disjoint alternate routes require more complex algorithms.
 
 ---
 
-## Development Notes
+## Troubleshooting
 
-### **Project History**
-- **Round 1:** Built segment-level demand model using LightGBM on Astram data
-- **Round 2:** Adapted Round 1 pipeline for impact forecasting (speed degradation), added recommendations & feedback loop
-
-### **Known Limitations**
-- Model trained on synthetic targets (no ground-truth speed labels in raw data)
-- Pre-computed routes; no real-time routing
-- Single-city model (Bengaluru); not generalizable to other cities without retraining
-- Feedback metrics aggregated, not used to retrain in real-time
-
-### **Future Enhancements**
-- [ ] Collect real speed degradation labels post-event
-- [ ] Implement online learning (update model after each feedback)
-- [ ] Multi-city model transfer learning
-- [ ] Real-time route optimization
-- [ ] Integration with live traffic feeds (Google Maps, HERE)
-
----
-
-## Setup Troubleshooting
-
-### **LightGBM ImportError**
-If `ModuleNotFoundError: No module named 'lightgbm'`:
+**`ModuleNotFoundError` on backend start**
 ```bash
-python -m pip install lightgbm --upgrade
+pip install -r backend/requirements.txt
 ```
 
-### **OSM Graph Not Found**
+**OSM graph not found**
 ```bash
 python scripts/download_osm_data.py
 ```
 
-### **API Server Won't Start**
-- Check Python interpreter: same one where you ran `pip install -r backend/requirements.txt`
-- Try:
+**Model not found / "Impact model is not loaded"**
 ```bash
-cd gridlock-event-congestion
-python -m uvicorn backend.app.main:app --reload --port 8000
+python backend/train_model.py
 ```
 
-### **Port 8000 Already in Use**
+**Port already in use**
+
+Change the port and update `frontend/.env` accordingly:
 ```bash
-uvicorn backend.app.main:app --reload --port 8001
+# Backend
+python -m uvicorn backend.app.main:app --port 9001
+
+# frontend/.env
+VITE_API_BASE_URL=http://127.0.0.1:9001/api
 ```
 
----
+**Frontend shows mock data instead of real predictions**
 
-## Contact & Questions
-
-For setup help or integration questions:
-- Check `backend/requirements.txt` for dependency versions
-- Review endpoint definitions in `backend/app/api/forecast.py` and `backend/app/api/feedback.py`
-- Inspect model architecture in `backend/app/core/model_pipeline.py`
+Ensure:
+1. Backend is running and has printed `Application startup complete`
+2. `frontend/.env` contains `VITE_API_BASE_URL=http://127.0.0.1:9000/api`
+3. Restart the Vite dev server after editing `.env`
