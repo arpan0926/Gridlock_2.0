@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
+import numpy as np
 import networkx as nx
 import osmnx as ox
 
@@ -28,6 +29,8 @@ class DiversionRoute:
     detour_ratio: float
     capacity_score: int
     path_nodes: List[int]
+    path_lats: List[float]
+    path_lons: List[float]
 
 
 class RecommendationEngine:
@@ -81,18 +84,16 @@ class RecommendationEngine:
         center_lat = float(center_attr.get("y", center_attr.get("lat", latitude)))
         center_lon = float(center_attr.get("x", center_attr.get("lon", longitude)))
 
-        nodes_in_radius = set()
-        for n, data in graph.nodes(data=True):
-            lat = data.get("y", data.get("lat", None))
-            lon = data.get("x", data.get("lon", None))
-            if lat is None or lon is None:
-                continue
-            try:
-                dist = ox.distance.great_circle_vec(center_lat, center_lon, float(lat), float(lon))
-            except Exception:
-                dist = ((center_lat - float(lat)) ** 2 + (center_lon - float(lon)) ** 2) ** 0.5 * 111000
-            if dist <= radius_m:
-                nodes_in_radius.add(n)
+        # Vectorized haversine to find nodes in radius
+        node_list = [(n, data) for n, data in graph.nodes(data=True)]
+        ids = np.array([n for n, _ in node_list])
+        lats = np.radians(np.array([float(d.get("y", d.get("lat", 0))) for _, d in node_list]))
+        lons = np.radians(np.array([float(d.get("x", d.get("lon", 0))) for _, d in node_list]))
+        clat, clon = np.radians(center_lat), np.radians(center_lon)
+        dlat, dlon = lats - clat, lons - clon
+        a = np.sin(dlat / 2) ** 2 + np.cos(clat) * np.cos(lats) * np.sin(dlon / 2) ** 2
+        dist_m = 2 * 6_371_000 * np.arcsin(np.sqrt(a))
+        nodes_in_radius = set(ids[dist_m <= radius_m].tolist())
 
         candidates = []
         for u, v, key, edge_data in graph.edges(keys=True, data=True):
@@ -127,40 +128,47 @@ class RecommendationEngine:
         origin_node = ox.distance.nearest_nodes(graph, origin[1], origin[0])
         dest_node = ox.distance.nearest_nodes(graph, destination[1], destination[0])
 
-        try:
-            paths = nx.shortest_simple_paths(graph, origin_node, dest_node, weight="length")
-        except Exception:
-            return []
+        direct_dist = max(1.0, self._direct_line_distance(origin, destination))
 
-        routes = []
-        for idx, path in enumerate(paths):
-            if idx >= max_paths:
-                break
+        def _find_path(g, src, dst):
+            try:
+                return nx.shortest_path(g, src, dst, weight="length")
+            except Exception:
+                return None
+
+        def _build_route(idx, path):
             distance = self._route_length(graph, path)
-            detour = distance / max(1.0, self._direct_line_distance(origin, destination))
             capacity = self._route_capacity(graph, path)
-            
-            # Extract lat/lon for each node in path
-            path_lats = []
-            path_lons = []
+            path_lats, path_lons = [], []
             for node in path:
-                node_data = graph.nodes.get(node, {})
-                lat = float(node_data.get("y", node_data.get("lat", 0.0)))
-                lon = float(node_data.get("x", node_data.get("lon", 0.0)))
-                path_lats.append(round(lat, 6))
-                path_lons.append(round(lon, 6))
-            
-            routes.append(
-                DiversionRoute(
-                    route_id=f"route-{idx + 1}",
-                    total_distance_m=distance,
-                    detour_ratio=round(detour, 2),
-                    capacity_score=capacity,
-                    path_nodes=list(path),
-                    path_lats=path_lats,
-                    path_lons=path_lons,
-                )
+                nd = graph.nodes.get(node, {})
+                path_lats.append(round(float(nd.get("y", nd.get("lat", 0.0))), 6))
+                path_lons.append(round(float(nd.get("x", nd.get("lon", 0.0))), 6))
+            return DiversionRoute(
+                route_id=f"route-{idx + 1}",
+                total_distance_m=round(distance, 1),
+                detour_ratio=round(distance / direct_dist, 2),
+                capacity_score=capacity,
+                path_nodes=list(path),
+                path_lats=path_lats,
+                path_lons=path_lons,
             )
+
+        # Primary route: Dijkstra on directed graph
+        path1 = _find_path(graph, origin_node, dest_node)
+        if path1 is None:
+            return []
+        routes = [_build_route(0, path1)]
+
+        # Alternate via midpoint: route through a node offset from the midpoint of path1
+        if max_paths >= 2 and len(path1) > 4:
+            mid_node = path1[len(path1) // 3]
+            alt_mid = _find_path(graph, origin_node, mid_node)
+            alt_end = _find_path(graph, mid_node, dest_node) if alt_mid else None
+            if alt_mid and alt_end:
+                combined = alt_mid + alt_end[1:]
+                if combined != path1:
+                    routes.append(_build_route(1, combined))
 
         return routes
 
@@ -202,7 +210,11 @@ class RecommendationEngine:
 
     @staticmethod
     def _direct_line_distance(origin: Tuple[float, float], destination: Tuple[float, float]) -> float:
-        return ox.distance.great_circle_vec(origin[0], origin[1], destination[0], destination[1])
+        lat1, lon1 = np.radians(origin[0]), np.radians(origin[1])
+        lat2, lon2 = np.radians(destination[0]), np.radians(destination[1])
+        dlat, dlon = lat2 - lat1, lon2 - lon1
+        a = np.sin(dlat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon / 2) ** 2
+        return float(2 * 6_371_000 * np.arcsin(np.sqrt(a)))
 
     @staticmethod
     def _road_name(edge_data: Dict) -> str:

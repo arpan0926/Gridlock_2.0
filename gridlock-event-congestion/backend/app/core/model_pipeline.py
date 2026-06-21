@@ -140,12 +140,13 @@ class SegmentImpactModel:
         self.save_model(pipeline)
         return self.model_path
 
-    def predict_segment_impacts(self, input_data, graph: nx.MultiDiGraph, radius_m: int = 1200, limit: int = 10) -> List[Dict]:
+    def predict_segment_impacts(self, input_data, graph: nx.MultiDiGraph, radius_m: int = 1200, limit: int = 10, osm_service=None) -> List[Dict]:
         if self.pipeline is None:
             raise RuntimeError("Impact model is not loaded.")
 
         dummy_row = self._event_base_features(input_data.__dict__)
-        node = OSMGraphService(graph_path=None).nearest_node(input_data.latitude, input_data.longitude, graph)
+        _svc = osm_service or OSMGraphService(graph_path=None)
+        node = _svc.nearest_node(input_data.latitude, input_data.longitude, graph)
         node_attr = graph.nodes.get(node, {})
         node_lat = float(node_attr.get("y", input_data.latitude))
         node_lon = float(node_attr.get("x", input_data.longitude))
@@ -156,22 +157,28 @@ class SegmentImpactModel:
             dummy_row["lon_hour_interaction"] = dummy_row["lon"] * dummy_row.get("hour_cos", 0.0)
         dummy_row["lat_lon_combined"] = dummy_row["lat"] * dummy_row["lon"]
 
-        subgraph = OSMGraphService(graph_path=None).nearby_subgraph(graph, node, radius_m)
+        subgraph = _svc.nearby_subgraph(graph, node, radius_m)
 
-        candidates = []
+        # Collect all edges first, then batch-predict in one call (much faster than per-row predict)
+        edge_meta = []
+        feature_rows = []
         for u, v, key, edge_data in subgraph.edges(keys=True, data=True):
-            features = {**dummy_row, **self._edge_features(edge_data)}
-            X = pd.DataFrame([features])
-            predicted = float(self.pipeline.predict(X)[0])
-            
-            # Extract start and end node coordinates
             u_attrs = subgraph.nodes.get(u, {})
             v_attrs = subgraph.nodes.get(v, {})
+            edge_meta.append((u, v, key, edge_data, u_attrs, v_attrs))
+            feature_rows.append({**dummy_row, **self._edge_features(edge_data)})
+
+        predictions = []
+        if feature_rows:
+            X_batch = pd.DataFrame(feature_rows)
+            predictions = self.pipeline.predict(X_batch).tolist()
+
+        candidates = []
+        for (u, v, key, edge_data, u_attrs, v_attrs), predicted in zip(edge_meta, predictions):
             start_lat = float(u_attrs.get("y", u_attrs.get("lat", input_data.latitude)))
             start_lon = float(u_attrs.get("x", u_attrs.get("lon", input_data.longitude)))
             end_lat = float(v_attrs.get("y", v_attrs.get("lat", input_data.latitude)))
             end_lon = float(v_attrs.get("x", v_attrs.get("lon", input_data.longitude)))
-            
             candidates.append(
                 {
                     "segment_id": f"{u}-{v}-{key}",
