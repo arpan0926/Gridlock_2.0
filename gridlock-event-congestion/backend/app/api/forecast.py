@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from backend.app.core.model_pipeline import SegmentImpactModel
 from backend.app.core.recommendation import RecommendationEngine
 from backend.app.services.osm_service import OSMGraphService
+from backend.app.core import database as db
 from dataclasses import asdict
 
 router = APIRouter()
@@ -95,6 +96,7 @@ def forecast_event(input_data: ForecastInput):
             graph=graph,
             radius_m=1200,
             limit=12,
+            osm_service=osm_service,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Forecast model failure: {exc}")
@@ -124,9 +126,41 @@ def forecast_event(input_data: ForecastInput):
     barricade_list = [asdict(b) for b in barricade_candidates]
     diversion_list = [asdict(r) for r in diversion_routes]
 
-    return ForecastResponse(
+    response = ForecastResponse(
         segments=segments,
         manpower=manpower_dict,
         barricade_candidates=barricade_list,
         diversion_routes=diversion_list,
     )
+
+    # ── Persist to SQLite ──────────────────────────────────
+    try:
+        response_dict = response.model_dump() if hasattr(response, "model_dump") else response.dict()
+        db.save_forecast(input_data.model_dump(mode="json") if hasattr(input_data, "model_dump") else input_data.dict(), response_dict)
+    except Exception as e:
+        print(f"[DB] Warning: failed to save forecast — {e}")
+
+    return response
+
+
+# ── Forecast history endpoints ─────────────────────────────
+
+@router.get("/forecasts")
+def list_forecasts(limit: int = 50):
+    """Return recent forecast summaries."""
+    return {"forecasts": db.get_forecasts(limit=limit)}
+
+
+@router.get("/forecasts/{forecast_id}")
+def get_forecast(forecast_id: int):
+    """Return a single forecast with its full response payload."""
+    result = db.get_forecast_by_id(forecast_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Forecast not found.")
+    return result
+
+
+@router.get("/forecast-analytics")
+def forecast_analytics():
+    """Aggregate forecast stats for the analytics page."""
+    return db.get_forecast_analytics()

@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { MessageSquarePlus, Send, CheckCircle2 } from 'lucide-react';
+import { MessageSquarePlus, Send, CheckCircle2, Clock } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { safeSubmitFeedback } from '../services/api';
+import { safeSubmitFeedback, safeGetFeedbackHistory } from '../services/api';
 
 const EVENT_TYPES = ['Concert', 'Cricket', 'Expo', 'Political Rally', 'Unplanned'];
 
@@ -16,6 +16,17 @@ export default function Feedback() {
   });
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+
+  // Load persisted feedback history on mount
+  useEffect(() => {
+    (async () => {
+      setHistoryLoading(true);
+      const data = await safeGetFeedbackHistory(100);
+      setHistory(data.history || []);
+      setHistoryLoading(false);
+    })();
+  }, []);
 
   const handleChange = (field, value) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -40,17 +51,9 @@ export default function Feedback() {
       };
 
       await safeSubmitFeedback(payload);
-
-      setHistory(prev => [
-        {
-          ...payload,
-          error: Math.abs(payload.actual_speed_degradation - payload.predicted_speed_degradation),
-          timestamp: new Date().toISOString(),
-        },
-        ...prev,
-      ]);
-
       toast.success('Feedback submitted successfully!');
+
+      // Reset form
       setForm({
         event_id: '',
         event_type: 'Concert',
@@ -58,6 +61,10 @@ export default function Feedback() {
         actual_speed_degradation: '',
         notes: '',
       });
+
+      // Refresh history from DB
+      const data = await safeGetFeedbackHistory(100);
+      setHistory(data.history || []);
     } catch (err) {
       toast.error('Submission failed: ' + (err.message || 'Unknown error'));
     } finally {
@@ -178,7 +185,7 @@ export default function Feedback() {
           </form>
         </motion.div>
 
-        {/* Submission History */}
+        {/* Submission History — from DB */}
         <motion.div
           className="card"
           initial={{ opacity: 0, x: 20 }}
@@ -186,20 +193,25 @@ export default function Feedback() {
           transition={{ duration: 0.4, delay: 0.1 }}
         >
           <div className="card-header">
-            <div className="card-title"><CheckCircle2 /> Session History</div>
+            <div className="card-title"><CheckCircle2 /> Feedback History</div>
             <div className="card-badge badge-green">{history.length} entries</div>
           </div>
 
-          {history.length === 0 ? (
+          {historyLoading ? (
+            <div className="empty-state" style={{ padding: '32px' }}>
+              <span className="spinner" style={{ width: 28, height: 28, borderWidth: 2 }} />
+              <p>Loading feedback history…</p>
+            </div>
+          ) : history.length === 0 ? (
             <div className="empty-state">
               <MessageSquarePlus size={48} />
               <h3>No feedback yet</h3>
-              <p>Submit your first post-event feedback to see it here. This data helps improve model accuracy over time.</p>
+              <p>Submit your first post-event feedback to see it here. All feedback is saved to the database and persists across sessions.</p>
             </div>
           ) : (
-            <div>
-              {history.map((entry, i) => (
-                <div className="feedback-card" key={i}>
+            <div className="feedback-history-scroll">
+              {history.map((entry) => (
+                <div className="feedback-card" key={entry.id}>
                   <div className="feedback-card-header">
                     <span className="feedback-type">
                       {entry.event_type}
@@ -210,7 +222,11 @@ export default function Feedback() {
                       )}
                     </span>
                     <span className="feedback-time">
-                      {new Date(entry.timestamp).toLocaleTimeString()}
+                      <Clock size={11} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+                      {new Date(entry.created_at).toLocaleString('en-IN', {
+                        month: 'short', day: 'numeric',
+                        hour: '2-digit', minute: '2-digit',
+                      })}
                     </span>
                   </div>
                   <div className="feedback-metrics">

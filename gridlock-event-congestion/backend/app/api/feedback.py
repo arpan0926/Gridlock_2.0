@@ -2,10 +2,9 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 from typing import Optional
 
-from backend.app.core.feedback import FeedbackTracker
+from backend.app.core import database as db
 
 router = APIRouter()
-tracker = FeedbackTracker()
 
 
 class FeedbackInput(BaseModel):
@@ -25,11 +24,18 @@ class MetricsResponse(BaseModel):
 
 @router.post("/feedback")
 def submit_feedback(payload: FeedbackInput):
-    tracker.log_feedback(payload.dict())
-    return {"status": "ok", "message": "Feedback recorded."}
+    data = payload.model_dump() if hasattr(payload, "model_dump") else payload.dict()
+    row_id = db.save_feedback(data)
+    return {"status": "ok", "message": "Feedback recorded.", "id": row_id}
 
 
 @router.get("/metrics")
 def get_feedback_metrics():
-    metrics = tracker.summary_metrics()
+    metrics = db.get_feedback_metrics()
     return {"metrics": metrics}
+
+
+@router.get("/feedback/history")
+def get_feedback_history(limit: int = 100):
+    """Return all feedback entries, newest first."""
+    return {"history": db.get_feedback_history(limit=limit)}
