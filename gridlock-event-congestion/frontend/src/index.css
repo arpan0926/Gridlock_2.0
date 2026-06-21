@@ -384,9 +384,21 @@ body {
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   margin-bottom: 24px;
+}
+
+@media (max-width: 1280px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .stat-card {
@@ -520,8 +532,14 @@ body {
 
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+/* Inside narrow panels (like the dashboard form card), stack fields */
+.dashboard-grid > .card .form-grid {
+  grid-template-columns: 1fr;
+  gap: 12px;
 }
 
 .form-group {
@@ -699,8 +717,16 @@ body {
 
 .dashboard-grid {
   display: grid;
-  grid-template-columns: 380px 1fr;
+  grid-template-columns: 340px 1fr;
   gap: 20px;
+  align-items: start;
+}
+
+.dashboard-right {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
 }
 
 @media (max-width: 1280px) {
@@ -717,12 +743,106 @@ body {
 }
 
 /* ============================================
+   FORECAST HISTORY LIST
+   ============================================ */
+
+.forecast-history-card {
+  max-height: 420px;
+  display: flex;
+  flex-direction: column;
+}
+
+.forecast-history-card .card-header {
+  flex-shrink: 0;
+}
+
+.history-list {
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-overlay);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  font-family: inherit;
+  color: var(--text-primary);
+  width: 100%;
+  text-align: left;
+  gap: 12px;
+}
+
+.history-item:hover {
+  background: var(--accent-soft);
+  border-color: rgba(var(--accent-primary-rgb), 0.25);
+}
+
+.history-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.history-item-type {
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-item-meta {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.history-item-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.history-item-details {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.history-chevron {
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+/* ============================================
+   FEEDBACK HISTORY SCROLL
+   ============================================ */
+
+.feedback-history-scroll {
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+/* ============================================
    MAP
    ============================================ */
 
 .map-container {
   width: 100%;
-  height: 460px;
+  height: 420px;
   border-radius: var(--radius-lg);
   overflow: hidden;
   border: 1px solid var(--border-primary);
