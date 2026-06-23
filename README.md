@@ -65,6 +65,7 @@ After each event, operators submit actual vs. predicted congestion via the feedb
 | ML Model | LightGBM 4.x + scikit-learn Pipeline |
 | Road Network | OSMnx 2.x + NetworkX 3.x (Bengaluru OSM graph) |
 | Backend | FastAPI 0.129 + Uvicorn |
+| Deployment | Hugging Face Spaces (Docker) |
 | Frontend | React 19 + Vite 6 |
 | Maps | React-Leaflet + Leaflet 1.9 |
 | Charts | Recharts 2 |
@@ -103,7 +104,8 @@ gridlock-event-congestion/
 └── frontend/
     ├── package.json
     ├── vite.config.js
-    ├── .env                    # VITE_API_BASE_URL (points to backend)
+    ├── .env.example             # Template — copy to .env and configure
+    ├── .env                     # VITE_API_BASE_URL (gitignored)
     └── src/
         ├── pages/
         │   ├── Dashboard.jsx   # Event form + live map + results
@@ -123,7 +125,30 @@ gridlock-event-congestion/
 
 ---
 
-## Setup & Running Locally
+## Deployed Instance
+
+A live backend is deployed on **Hugging Face Spaces** and accessible at:
+
+| Service | URL |
+|---|---|
+| API Base | `https://arpann09-gridlock.hf.space/api` |
+| Swagger Docs | `https://arpann09-gridlock.hf.space/docs` |
+
+The frontend is pre-configured to use this remote API by default. You can run just the frontend locally without setting up the backend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend is available at: **http://localhost:5173**
+
+---
+
+## Setup & Running Locally (Full Stack)
+
+> **Skip to the Deployed Instance section above if you only need the frontend.**
 
 ### Prerequisites
 
@@ -200,25 +225,50 @@ Training complete. Model saved to backend/models/impact_model.pkl
 
 ---
 
-### Step 6 — Start the backend API server
+### Step 6 — Configure environment variables
+
+Copy the example environment file and point the frontend to your local backend:
 
 ```bash
-python -m uvicorn backend.app.main:app --port 9000
+cp frontend/.env.example frontend/.env
 ```
 
-> **Important:** The server pre-loads the OSM graph on startup. Wait for the following message before making requests (approximately 60–90 seconds):
-> ```
-> [Startup] OSM graph ready — 155370 nodes, 393715 edges
-> INFO:     Application startup complete.
-> ```
+Then edit `frontend/.env`:
 
-Backend is now available at:
-- API: `http://127.0.0.1:9000`
-- Interactive docs (Swagger): `http://127.0.0.1:9000/docs`
+```env
+# For local development (default):
+VITE_API_BASE_URL=http://127.0.0.1:8000/api
+
+# For the deployed Hugging Face Space backend:
+# VITE_API_BASE_URL=https://arpann09-gridlock.hf.space/api
+```
+
+> **Note:** `.env` is gitignored. Never commit secrets or API URLs to the repository.
 
 ---
 
-### Step 7 — Start the frontend
+### Step 7 — Start the backend API server
+
+```bash
+python -m uvicorn backend.app.main:app --port 8000
+```
+
+> **Important:** The server pre-loads the OSM graph on startup. Wait for the following messages before making requests (approximately 60–90 seconds):
+> ```
+> [Startup] ML model loaded: True
+> [Startup] OSM graph ready — 155370 nodes, 393715 edges
+> INFO:     Application startup complete.
+> ```
+>
+> If you see `ML model loaded: False`, the model pickle was not found. See [Troubleshooting](#troubleshooting).
+
+Backend is now available at:
+- API: `http://127.0.0.1:8000`
+- Interactive docs (Swagger): `http://127.0.0.1:8000/docs`
+
+---
+
+### Step 8 — Start the frontend
 
 In a **new terminal**:
 
@@ -234,7 +284,7 @@ Frontend is available at: **http://localhost:5173**
 
 ### After first-time setup
 
-On subsequent runs you only need Steps 6 and 7 — the graph and model are already on disk.
+On subsequent runs you only need Steps 7 and 8 — the graph and model are already on disk.
 
 ---
 
@@ -408,9 +458,16 @@ pip install -r backend/requirements.txt
 python scripts/download_osm_data.py
 ```
 
-**Model not found / "Impact model is not loaded"**
+**Model not found / `ML model loaded: False` / "Impact model is not loaded"**
+
+First, ensure the model has been trained:
 ```bash
 python backend/train_model.py
+```
+
+The trained model must be saved at `backend/models/impact_model.pkl`. If the startup log shows `ML model loaded: False` even after training, verify the file exists at the correct path:
+```bash
+ls backend/models/impact_model.pkl
 ```
 
 **Port already in use**
@@ -427,6 +484,13 @@ VITE_API_BASE_URL=http://127.0.0.1:9001/api
 **Frontend shows mock data instead of real predictions**
 
 Ensure:
-1. Backend is running and has printed `Application startup complete`
-2. `frontend/.env` contains `VITE_API_BASE_URL=http://127.0.0.1:9000/api`
-3. Restart the Vite dev server after editing `.env`
+1. Backend is running and has printed `ML model loaded: True` and `Application startup complete`
+2. `frontend/.env` contains a valid `VITE_API_BASE_URL` (either local or the HF Space URL)
+3. Restart the Vite dev server after editing `.env` — Vite only reads `.env` at startup
+
+**Using the deployed API instead of a local backend**
+
+Set the following in `frontend/.env` to skip local backend setup entirely:
+```env
+VITE_API_BASE_URL=https://arpann09-gridlock.hf.space/api
+```
