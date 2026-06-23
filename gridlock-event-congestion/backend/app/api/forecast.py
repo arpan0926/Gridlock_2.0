@@ -19,7 +19,8 @@ from pathlib import Path
 BASE_DIR = Path(os.path.abspath(os.path.dirname(__file__))).parents[2]
 
 # Now paths will safely resolve no matter where Docker puts them
-MODEL_PATH = BASE_DIR / "models" / "impact_model.pkl"
+BACKEND_DIR = Path(os.path.abspath(os.path.dirname(__file__))).parents[1]
+MODEL_PATH = BACKEND_DIR / "models" / "impact_model.pkl"
 GRAPH_PATH = BASE_DIR / "data" / "processed" / "bengaluru_drive.graphml" 
 DB_PATH = BASE_DIR / "gridlock.db"
 
