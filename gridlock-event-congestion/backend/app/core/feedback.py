@@ -2,7 +2,16 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
+import os
+from pathlib import Path
 
+# Set the base directory to the root of the 'backend' folder
+BASE_DIR = Path(os.path.abspath(os.path.dirname(__file__))).parents[2]
+
+# Now paths will safely resolve no matter where Docker puts them
+MODEL_PATH = BASE_DIR / "models" / "impact_model.pkl"
+GRAPH_PATH = BASE_DIR / "data" / "processed" / "bengaluru_drive.graphml" 
+DB_PATH = BASE_DIR / "gridlock.db"
 
 class FeedbackTracker:
     def __init__(self, storage_path: Path = None):

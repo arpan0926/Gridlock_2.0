@@ -10,8 +10,14 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
+import os
+from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parents[3] / "backend" / "gridlock.db"
+BASE_DIR = Path(os.path.abspath(os.path.dirname(__file__))).parents[2]
+
+MODEL_PATH = BASE_DIR / "models" / "impact_model.pkl"
+GRAPH_PATH = BASE_DIR / "data" / "processed" / "bengaluru_drive.graphml" 
+DB_PATH = BASE_DIR / "gridlock.db"
 
 
 def get_connection() -> sqlite3.Connection:

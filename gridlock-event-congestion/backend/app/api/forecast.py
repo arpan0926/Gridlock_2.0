@@ -12,9 +12,16 @@ from backend.app.core import database as db
 from dataclasses import asdict
 
 router = APIRouter()
+import os
+from pathlib import Path
 
-MODEL_PATH = Path(__file__).resolve().parents[3] / "backend" / "models" / "impact_model.pkl"
-GRAPH_PATH = Path(__file__).resolve().parents[3] / "data" / "processed" / "bengaluru_drive.graphml"
+# Set the base directory to the root of the 'backend' folder
+BASE_DIR = Path(os.path.abspath(os.path.dirname(__file__))).parents[2]
+
+# Now paths will safely resolve no matter where Docker puts them
+MODEL_PATH = BASE_DIR / "models" / "impact_model.pkl"
+GRAPH_PATH = BASE_DIR / "data" / "processed" / "bengaluru_drive.graphml" 
+DB_PATH = BASE_DIR / "gridlock.db"
 
 model = SegmentImpactModel(model_path=MODEL_PATH)
 osm_service = OSMGraphService(graph_path=GRAPH_PATH)
